@@ -10,29 +10,28 @@ export async function POST(request) {
   const isSupplier = mode === "supplier";
 
   const prompt = isSupplier
-    ? `You are a supply chain intelligence analyst. Research "${topic}" and return a complete HTML briefing using only <p>, <strong>, <table>, <tr>, <th>, <td> tags. No markdown, no backticks.
+    ? `You are a supply chain intelligence analyst with deep industry knowledge. Research "${topic}" and return a complete HTML briefing using only <p>, <strong>, <table>, <tr>, <th>, <td> tags. No markdown, no backticks.
+
+CRITICAL RULES:
+- Use REAL company names only — no generic terms like "Chinese supplier" or "European manufacturer"
+- Examples of real company names: ArcelorMittal, Nippon Steel, POSCO, Tata Steel, Nucor, US Steel, Baosteel, ThyssenKrupp
+- Include the company headquarters city and country
+- Include real estimated price ranges based on current market data
+- Reliability scores must be out of 10 based on real reputation data
 
 Structure exactly like this:
-<p><strong>Market overview:</strong> current state with real price data</p>
-<p><strong>Current price range:</strong> specific price per unit/ton with currency</p>
+<p><strong>Market overview:</strong> current state with specific price data and market conditions</p>
+<p><strong>Current price range:</strong> specific price per unit/ton with currency and date reference</p>
 <p><strong>Supplier comparison:</strong></p>
 <table>
-<tr><th>Supplier / Region</th><th>Est. Price Range</th><th>Reputation</th><th>Location</th><th>Reliability Score</th><th>Notes</th></tr>
-[5 supplier rows with real data]
+<tr><th>Company Name</th><th>Est. Price Range</th><th>Reputation</th><th>HQ Location</th><th>Reliability (out of 10)</th><th>Key Notes</th></tr>
+[6 rows with REAL company names, real HQ cities, real reputation data]
 </table>
-<p><strong>Best value pick:</strong> best supplier recommendation and why</p>
-<p><strong>Supply chain risks:</strong> current risks — tariffs, shortages, geopolitical issues</p>
-<p><strong>Price outlook:</strong> will prices rise or fall in next 30-90 days</p>
-<p><strong>Recommendation:</strong> clear actionable advice for a buyer</p>`
-    : `You are a market intelligence analyst. Research "${topic}" and return a complete HTML briefing using only <p> and <strong> tags. No markdown, no backticks.
-
-Structure exactly like this:
-<p><strong>Overview:</strong> 2-sentence current state with real data and numbers</p>
-<p><strong>Key development 1:</strong> specific recent news and why it matters</p>
-<p><strong>Key development 2:</strong> another signal with numbers</p>
-<p><strong>Key development 3:</strong> third catalyst</p>
-<p><strong>Watch for:</strong> forward-looking risks or catalysts</p>
-<p><strong>Sentiment:</strong> clearly state bullish, bearish, or neutral and why</p>`;
+<p><strong>Best value pick:</strong> name the specific company and explain exactly why</p>
+<p><strong>Supply chain risks:</strong> specific current risks with company or country names</p>
+<p><strong>Price outlook:</strong> specific forecast with percentage estimates for next 30-90 days</p>
+<p><strong>Recommendation:</strong> specific actionable advice naming which companies to contact first</p>`
+    : `You are a market research analyst. Research "${topic}" and return a complete HTML briefing using only <p>, <strong>, <table>, <tr>, <th>, <td> tags. No markdown, no backticks. Include market overview, key trends, competitive landscape, and recommendations.`;
 
   const headers = {
     "Content-Type": "application/json",
