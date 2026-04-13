@@ -1,4 +1,4 @@
-export const maxDuration = 60;
+export const maxDuration = 90;
 
 export async function POST(request) {
   const { topic, mode } = await request.json();
