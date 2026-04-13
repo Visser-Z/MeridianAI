@@ -15,87 +15,79 @@ export async function POST(request) {
 
     const isSupplier = mode === "supplier";
 
-    const claudeSystem = isSupplier
-      ? `You are a supply chain intelligence researcher. Research current market prices, suppliers, and risks for the given commodity. Return findings as plain text with clear sections for: market overview, price range, top suppliers with estimated prices and reliability, supply chain risks, and outlook. Be specific with numbers and data. Always search the web first.`
-      : `You are a market intelligence researcher. Research the given topic and return findings as plain text covering: current state with data, 3 key developments, risks to watch, and sentiment. Be specific with real numbers. Always search the web first.`;
+    const prompt = isSupplier
+      ? `You are a supply chain intelligence analyst. Research "${topic}" and return a complete HTML briefing using only <p>, <strong>, <table>, <tr>, <th>, <td> tags.
 
-    const claudePrompt = isSupplier
-      ? `Research current market prices, suppliers, and supply chain intelligence for: "${topic}". Find the latest real pricing data and supplier information.`
-      : `Research and provide current market intelligence for: "${topic}". Find the latest real news and data.`;
+Structure exactly like this:
+<p><strong>Market overview:</strong> current state with real price data</p>
+<p><strong>Current price range:</strong> specific price per unit/ton with currency</p>
+<p><strong>Supplier comparison:</strong></p>
+<table>
+<tr><th>Supplier / Region</th><th>Est. Price Range</th><th>Reputation</th><th>Location</th><th>Reliability Score</th><th>Notes</th></tr>
+[5 supplier rows with real data]
+</table>
+<p><strong>Best value pick:</strong> best supplier recommendation and why</p>
+<p><strong>Supply chain risks:</strong> current risks — tariffs, shortages, geopolitical issues</p>
+<p><strong>Price outlook:</strong> will prices rise or fall in next 30-90 days</p>
+<p><strong>Recommendation:</strong> clear actionable advice for a buyer</p>`
+      : `You are a market intelligence analyst. Research "${topic}" and return a complete HTML briefing using only <p> and <strong> tags.
 
-    const geminiPrompt = isSupplier
-      ? `You are a supply chain analyst. Research current market prices, key suppliers, reliability ratings, and supply chain risks for: "${topic}". Provide specific pricing data, supplier names, locations, and a market outlook. Use your knowledge up to your training cutoff and note any key trends.`
-      : `You are a market analyst. Research the current state of: "${topic}". Cover the latest developments, key data points, market sentiment, and what to watch for. Be specific with numbers and facts.`;
+Structure exactly like this:
+<p><strong>Overview:</strong> 2-sentence current state with real data and numbers</p>
+<p><strong>Key development 1:</strong> specific recent news and why it matters</p>
+<p><strong>Key development 2:</strong> another signal with numbers</p>
+<p><strong>Key development 3:</strong> third catalyst</p>
+<p><strong>Watch for:</strong> forward-looking risks or catalysts</p>
+<p><strong>Sentiment:</strong> clearly state bullish, bearish, or neutral and why</p>`;
 
+    // Run Claude and Gemini in parallel — just 2 calls total
     const [claudeRes, geminiRes] = await Promise.allSettled([
       anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
         max_tokens: 1500,
         tools: [{ type: "web_search_20250305", name: "web_search" }],
-        system: claudeSystem,
-        messages: [{ role: "user", content: claudePrompt }],
+        system: "You are MeridianAI. Always search the web first for the latest real data before responding. Return HTML only using the structure provided.",
+        messages: [{ role: "user", content: prompt }],
       }),
-      geminiModel.generateContent(geminiPrompt),
+      geminiModel.generateContent(
+        `You are a market analyst. Research "${topic}" thoroughly. ` + prompt
+      ),
     ]);
 
     const claudeText = claudeRes.status === "fulfilled"
       ? claudeRes.value.content.filter(b => b.type === "text").map(b => b.text).join("")
-      : "Claude research unavailable.";
+      : null;
 
     const geminiText = geminiRes.status === "fulfilled"
       ? geminiRes.value.response.text()
-      : "Gemini research unavailable.";
+      : null;
 
-    const synthesisSystem = isSupplier
-      ? `You are MeridianAI, a senior supply chain intelligence analyst. You have received research on a commodity from two different AI sources. Your job is to synthesize the best, most accurate information from both into one definitive briefing.
+    // Use Claude's answer if available, fall back to Gemini, merge if both exist
+    let finalText = "";
 
-Return HTML using only <p>, <strong>, <table>, <tr>, <th>, <td> tags. Structure exactly like this:
+    if (claudeText && geminiText) {
+      // Both succeeded — let Gemini do a quick merge (no extra Claude call)
+      const mergeResult = await geminiModel.generateContent(
+        `You have two research reports on "${topic}". Merge the best data from both into one final HTML briefing.
+        
+Use only <p>, <strong>, <table>, <tr>, <th>, <td> tags. Keep the same structure as the inputs. Be concise and data-driven. Prioritize the most specific and recent data from either source.
 
-<p><strong>Market overview:</strong> Best synthesized summary with the most accurate current data</p>
-<p><strong>Current price range:</strong> Most accurate price range per unit combining both sources</p>
-<p><strong>Supplier comparison:</strong></p>
-<table>
-<tr><th>Supplier / Region</th><th>Est. Price Range</th><th>Reputation</th><th>Location</th><th>Reliability Score</th><th>Notes</th></tr>
-[5-6 best supplier rows combining data from both sources]
-</table>
-<p><strong>Best value pick:</strong> Most reliable recommendation combining both analyses</p>
-<p><strong>Supply chain risks:</strong> Most comprehensive risk assessment from both sources</p>
-<p><strong>Price outlook:</strong> Most accurate forward-looking assessment</p>
-<p><strong>Recommendation:</strong> Clear actionable advice based on combined intelligence</p>
-
-Prioritize specific numbers and data over vague statements. If sources conflict, use the most specific and recent data.`
-      : `You are MeridianAI, a senior market intelligence analyst. You have received research on a topic from two different AI sources. Synthesize the best, most accurate information from both into one definitive briefing.
-
-Return HTML using only <p> and <strong> tags. Structure exactly like this:
-
-<p><strong>Overview:</strong> Best synthesized current state summary with the most accurate data</p>
-<p><strong>Key development 1:</strong> Most important recent development combining both sources</p>
-<p><strong>Key development 2:</strong> Second key signal with the best available data</p>
-<p><strong>Key development 3:</strong> Third important signal</p>
-<p><strong>Watch for:</strong> Most comprehensive forward-looking risks and catalysts</p>
-<p><strong>Sentiment:</strong> Most accurate sentiment conclusion — clearly state bullish, bearish, or neutral and why</p>
-
-If sources agree, state it confidently. If they conflict, use the most specific and data-backed answer.`;
-
-    const synthesis = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1500,
-      system: synthesisSystem,
-      messages: [{
-        role: "user",
-        content: `Here are two independent research reports on "${topic}". Synthesize them into one definitive briefing.
-
-RESEARCH SOURCE 1 (Claude with web search):
+REPORT 1:
 ${claudeText}
 
-RESEARCH SOURCE 2 (Gemini):
+REPORT 2:
 ${geminiText}
 
-Combine the best data from both sources into a single authoritative briefing.`
-      }]
-    });
+Return only the merged HTML briefing, nothing else.`
+      );
+      finalText = mergeResult.response.text();
+    } else {
+      finalText = claudeText || geminiText || "<p>Research failed — please try again.</p>";
+    }
 
-    const finalText = synthesis.content.filter(b => b.type === "text").map(b => b.text).join("");
+    // Clean up any markdown backticks Gemini might add
+    finalText = finalText.replace(/```html/g, "").replace(/```/g, "").trim();
+
     const lower = finalText.toLowerCase();
     const sentiment = lower.includes("bullish") ? "bull" : lower.includes("bearish") ? "bear" : "neut";
 
