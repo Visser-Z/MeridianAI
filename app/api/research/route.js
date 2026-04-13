@@ -92,70 +92,114 @@ RESEARCH FROM MODEL 2 (Gemma):
 ${gemmaRaw}
     `.trim();
 
-    // STEP 2 — Use GPT to turn raw research into a clean formatted report
-    const reportPrompt = isSupplier
-      ? `You are a senior supply chain analyst at MeridianAI. You have been given raw research notes about "${topic}" from two different researchers. 
-
-Using ONLY the facts from the research notes below, write a professional HTML report. Use only <p>, <strong>, <table>, <tr>, <th>, <td> tags. No markdown, no backticks.
+  // STEP 2 — Both models write the report simultaneously
+    const reportPromptText = isSupplier
+      ? `You are a senior supply chain analyst. Using the research notes below, write a professional HTML report about "${topic}". Use only <p>, <strong>, <table>, <tr>, <th>, <td> tags. No markdown, no backticks.
 
 CRITICAL RULES:
-- Only use company names that appear in the research notes
-- Only use prices and data that appear in the research notes
-- If a piece of data is missing, say "data unavailable" rather than making it up
-- Reliability scores out of 10 based on reputation mentioned in research
+- Only use company names found in the research notes
+- Only use prices found in the research notes
+- Reliability scores out of 10
+- If data is missing say "data unavailable"
 
-Structure exactly like this:
-<p><strong>Market overview:</strong> current state based on research findings</p>
-<p><strong>Current price range:</strong> exact prices from research with currency</p>
+Structure:
+<p><strong>Market overview:</strong> current state from research</p>
+<p><strong>Current price range:</strong> exact prices from research</p>
 <p><strong>Supplier comparison:</strong></p>
 <table>
 <tr><th>Company Name</th><th>Est. Price Range</th><th>Reputation</th><th>HQ Location</th><th>Reliability (out of 10)</th><th>Key Notes</th></tr>
 [one row per real company found in research]
 </table>
-<p><strong>Best value pick:</strong> name the specific company from research and why</p>
-<p><strong>Supply chain risks:</strong> risks found in research</p>
-<p><strong>Price outlook:</strong> forecast based on research findings</p>
-<p><strong>Recommendation:</strong> actionable advice based on research</p>
+<p><strong>Best value pick:</strong> specific company from research and why</p>
+<p><strong>Supply chain risks:</strong> risks from research</p>
+<p><strong>Price outlook:</strong> forecast from research</p>
+<p><strong>Recommendation:</strong> actionable advice from research</p>
 
-RAW RESEARCH NOTES:
+RESEARCH NOTES:
 ${combinedResearch}`
-      : `You are a senior market analyst at MeridianAI. You have been given raw research notes about "${topic}" from two different researchers.
-
-Using ONLY the facts from the research notes below, write a professional HTML briefing. Use only <p> and <strong> tags. No markdown, no backticks.
+      : `You are a senior market analyst. Using the research notes below, write a professional HTML briefing about "${topic}". Use only <p> and <strong> tags. No markdown, no backticks.
 
 CRITICAL RULES:
-- Only use facts and data that appear in the research notes
-- If something is unknown say so rather than making it up
-- Be specific with numbers and names from the research
+- Only use facts found in the research notes
+- Be specific with numbers and names
+- If something is unknown say so
 
-Structure exactly like this:
-<p><strong>Overview:</strong> current state based on research findings</p>
-<p><strong>Key development 1:</strong> most important finding from research</p>
-<p><strong>Key development 2:</strong> second most important finding</p>
+Structure:
+<p><strong>Overview:</strong> current state from research</p>
+<p><strong>Key development 1:</strong> most important finding</p>
+<p><strong>Key development 2:</strong> second finding</p>
 <p><strong>Key development 3:</strong> third finding</p>
-<p><strong>Watch for:</strong> risks and opportunities found in research</p>
-<p><strong>Sentiment:</strong> clearly state bullish, bearish, or neutral based on research findings and why</p>
+<p><strong>Watch for:</strong> risks and opportunities from research</p>
+<p><strong>Sentiment:</strong> bullish, bearish, or neutral and why</p>
 
-RAW RESEARCH NOTES:
+RESEARCH NOTES:
 ${combinedResearch}`;
 
-    const reportRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: "meta-llama/llama-3.3-70b-instruct:free",
-        max_tokens: 2000,
-        messages: [
-          { role: "system", content: "You are a senior analyst. Write a clean HTML report based strictly on the research notes provided. Never invent data. Use only facts from the notes." },
-          { role: "user", content: reportPrompt },
-        ],
-      }),
-    });
+    // Both models write the report at the same time
+    const [report1Res, report2Res] = await Promise.allSettled([
+      fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model: "meta-llama/llama-3.3-70b-instruct:free",
+          max_tokens: 2000,
+          messages: [
+            { role: "system", content: "You are a senior analyst. Write a clean HTML report based strictly on the research notes provided. Never invent data." },
+            { role: "user", content: reportPromptText },
+          ],
+        }),
+      }).then(r => r.json()),
 
-    const reportData = await reportRes.json();
-    let finalText = reportData.choices?.[0]?.message?.content || "<p>Report generation failed — please try again.</p>";
+      fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model: "google/gemma-4-31b-it:free",
+          max_tokens: 2000,
+          messages: [
+            { role: "system", content: "You are a senior analyst. Write a clean HTML report based strictly on the research notes provided. Never invent data." },
+            { role: "user", content: reportPromptText },
+          ],
+        }),
+      }).then(r => r.json()),
+    ]);
 
-    // Clean up any markdown
+    const report1 = report1Res.status === "fulfilled" && report1Res.value.choices
+      ? report1Res.value.choices[0]?.message?.content || null
+      : null;
+
+    const report2 = report2Res.status === "fulfilled" && report2Res.value.choices
+      ? report2Res.value.choices[0]?.message?.content || null
+      : null;
+
+    let finalText = "";
+
+    if (report1 && report2) {
+      // Both wrote a report — pick the best sections from each
+      const mergeRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model: "google/gemma-4-31b-it:free",
+          max_tokens: 2000,
+          messages: [
+            {
+              role: "system",
+              content: "You are a senior editor. You have two versions of the same HTML report. Merge them into one final version by picking the most detailed, specific, and accurate content from each. Keep the same HTML structure. No markdown, no backticks. Return only the final HTML.",
+            },
+            {
+              role: "user",
+              content: `Merge these two reports on "${topic}" into one definitive final report. Pick the best and most specific content from each:\n\nREPORT VERSION 1:\n${report1}\n\nREPORT VERSION 2:\n${report2}`,
+            },
+          ],
+        }),
+      });
+      const mergeData = await mergeRes.json();
+      finalText = mergeData.choices?.[0]?.message?.content || report1;
+    } else {
+      finalText = report1 || report2 || "<p>Report generation failed — please try again.</p>";
+    }
+
     finalText = finalText.replace(/```html/g, "").replace(/```/g, "").trim();
 
     const lower = finalText.toLowerCase();
