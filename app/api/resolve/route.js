@@ -13,7 +13,7 @@ export async function POST(request) {
         "X-Title": "MeridianAI",
       },
       body: JSON.stringify({
-        model: "openai/gpt-oss-20b",
+        model: "meta-llama/llama-3.3-70b-instruct:free",
         max_tokens: 20,
         messages: [{
           role: "user",

@@ -49,7 +49,7 @@ Do NOT format into a report. Just list everything you know as raw research notes
         method: "POST",
         headers,
         body: JSON.stringify({
-          model: "openai/gpt-oss-20b",
+          model: "meta-llama/llama-3.3-70b-instruct:free",
           max_tokens: 1500,
           messages: [
             { role: "system", content: "You are a thorough market researcher. Gather as many real facts, company names, prices, and data points as possible. Be specific. No formatting needed — just raw research notes." },
@@ -143,7 +143,7 @@ ${combinedResearch}`;
       method: "POST",
       headers,
       body: JSON.stringify({
-        model: "openai/gpt-oss-20b",
+        model: "meta-llama/llama-3.3-70b-instruct:free",
         max_tokens: 2000,
         messages: [
           { role: "system", content: "You are a senior analyst. Write a clean HTML report based strictly on the research notes provided. Never invent data. Use only facts from the notes." },
