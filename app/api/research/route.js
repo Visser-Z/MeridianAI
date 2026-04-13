@@ -17,77 +17,80 @@ export async function POST(request) {
   };
 
   const researchPrompt = isSupplier
-    ? `You are a supply chain researcher. Your ONLY job right now is to gather raw facts about "${topic}". 
-
-Find and list:
+    ? `You are a supply chain researcher. Gather raw facts about "${topic}". List:
 1. Real company names that produce or supply ${topic} globally
 2. Their headquarters locations (city and country)
-3. Their estimated current pricing (be specific with numbers and currency)
+3. Their estimated current pricing with numbers and currency
 4. Their reputation in the industry
-5. Any current supply chain issues, tariffs, shortages affecting ${topic}
-6. Current market price range for ${topic}
-7. Price trends — is it going up or down and why
-
-Do NOT format into a report. Just list everything you know as raw research notes. Be as specific as possible with real names and numbers.`
-    : `You are a market researcher. Your ONLY job right now is to gather raw facts about "${topic}".
-
-Find and list:
-1. Current state of ${topic} with real numbers and data
-2. Latest news and developments affecting ${topic}
+5. Current supply chain issues, tariffs, shortages
+6. Current market price range
+7. Price trends — going up or down and why
+Do NOT format into a report. Just raw research notes. Be as specific as possible.`
+    : `You are a market researcher. Gather raw facts about "${topic}". List:
+1. Current state with real numbers and data
+2. Latest news and developments
 3. Key companies, people, or events involved
-4. Market sentiment — is it positive or negative and why
+4. Market sentiment and why
 5. Risks and opportunities
-6. What experts or analysts are saying
+6. What experts are saying
 7. Price or performance data if applicable
+Do NOT format into a report. Just raw research notes. Be as specific as possible.`;
 
-Do NOT format into a report. Just list everything you know as raw research notes. Be as specific as possible.`;
+  let gptRaw = "";
+  let gemmaRaw = "";
 
   try {
-  let gptRaw = "";
-let gemmaRaw = "";
+    const r1 = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: "meta-llama/llama-3.3-70b-instruct:free",
+        max_tokens: 1500,
+        messages: [
+          { role: "system", content: "You are a thorough market researcher. Gather real facts, company names, prices, and data points. No formatting — just raw research notes." },
+          { role: "user", content: researchPrompt },
+        ],
+      }),
+    });
+    const d1 = await r1.json();
+    gptRaw = d1.choices?.[0]?.message?.content || "";
+  } catch(e) { gptRaw = ""; }
 
-try {
-  const r1 = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model: "meta-llama/llama-3.3-70b-instruct:free",
-      max_tokens: 1500,
-      messages: [
-        { role: "system", content: "You are a thorough market researcher. Gather real facts, company names, prices, and data points. No formatting — just raw research notes." },
-        { role: "user", content: researchPrompt },
-      ],
-    }),
-  });
-  const d1 = await r1.json();
-  gptRaw = d1.choices?.[0]?.message?.content || "";
-} catch(e) { gptRaw = ""; }
+  await new Promise(r => setTimeout(r, 2000));
 
-// Small delay between calls to avoid rate limiting
-await new Promise(r => setTimeout(r, 2000));
+  try {
+    const r2 = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: "google/gemma-4-31b-it:free",
+        max_tokens: 1500,
+        messages: [
+          { role: "system", content: "You are a thorough market researcher. Gather real facts, company names, prices, and data points. No formatting — just raw research notes." },
+          { role: "user", content: researchPrompt },
+        ],
+      }),
+    });
+    const d2 = await r2.json();
+    gemmaRaw = d2.choices?.[0]?.message?.content || "";
+  } catch(e) { gemmaRaw = ""; }
 
-try {
-  const r2 = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model: "google/gemma-4-31b-it:free",
-      max_tokens: 1500,
-      messages: [
-        { role: "system", content: "You are a thorough market researcher. Gather real facts, company names, prices, and data points. No formatting — just raw research notes." },
-        { role: "user", content: researchPrompt },
-      ],
-    }),
-  });
-  const d2 = await r2.json();
-  gemmaRaw = d2.choices?.[0]?.message?.content || "";
-} catch(e) { gemmaRaw = ""; }
+  if (!gptRaw && !gemmaRaw) {
+    return Response.json({ error: "Both research models failed — please try again." }, { status: 500 });
+  }
 
-  // STEP 2 — Both models write the report simultaneously
-    const reportPromptText = isSupplier
-      ? `You are a senior supply chain analyst. Using the research notes below, write a professional HTML report about "${topic}". Use only <p>, <strong>, <table>, <tr>, <th>, <td> tags. No markdown, no backticks.
+  const combinedResearch = `
+RESEARCH FROM MODEL 1:
+${gptRaw}
 
-CRITICAL RULES:
+RESEARCH FROM MODEL 2:
+${gemmaRaw}
+  `.trim();
+
+  const reportPromptText = isSupplier
+    ? `You are a senior supply chain analyst at MeridianAI. Using ONLY the research notes below, write a professional HTML report about "${topic}". Use only <p>, <strong>, <table>, <tr>, <th>, <td> tags. No markdown, no backticks.
+
+RULES:
 - Only use company names found in the research notes
 - Only use prices found in the research notes
 - Reliability scores out of 10
@@ -99,18 +102,17 @@ Structure:
 <p><strong>Supplier comparison:</strong></p>
 <table>
 <tr><th>Company Name</th><th>Est. Price Range</th><th>Reputation</th><th>HQ Location</th><th>Reliability (out of 10)</th><th>Key Notes</th></tr>
-[one row per real company found in research]
 </table>
-<p><strong>Best value pick:</strong> specific company from research and why</p>
+<p><strong>Best value pick:</strong> specific company and why</p>
 <p><strong>Supply chain risks:</strong> risks from research</p>
 <p><strong>Price outlook:</strong> forecast from research</p>
-<p><strong>Recommendation:</strong> actionable advice from research</p>
+<p><strong>Recommendation:</strong> actionable advice</p>
 
 RESEARCH NOTES:
 ${combinedResearch}`
-      : `You are a senior market analyst. Using the research notes below, write a professional HTML briefing about "${topic}". Use only <p> and <strong> tags. No markdown, no backticks.
+    : `You are a senior market analyst at MeridianAI. Using ONLY the research notes below, write a professional HTML briefing about "${topic}". Use only <p> and <strong> tags. No markdown, no backticks.
 
-CRITICAL RULES:
+RULES:
 - Only use facts found in the research notes
 - Be specific with numbers and names
 - If something is unknown say so
@@ -120,53 +122,58 @@ Structure:
 <p><strong>Key development 1:</strong> most important finding</p>
 <p><strong>Key development 2:</strong> second finding</p>
 <p><strong>Key development 3:</strong> third finding</p>
-<p><strong>Watch for:</strong> risks and opportunities from research</p>
+<p><strong>Watch for:</strong> risks and opportunities</p>
 <p><strong>Sentiment:</strong> bullish, bearish, or neutral and why</p>
 
 RESEARCH NOTES:
 ${combinedResearch}`;
 
-    // Both models write the report at the same time
-    const [report1Res, report2Res] = await Promise.allSettled([
-      fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          model: "meta-llama/llama-3.3-70b-instruct:free",
-          max_tokens: 2000,
-          messages: [
-            { role: "system", content: "You are a senior analyst. Write a clean HTML report based strictly on the research notes provided. Never invent data." },
-            { role: "user", content: reportPromptText },
-          ],
-        }),
-      }).then(r => r.json()),
+  let report1 = null;
+  let report2 = null;
 
-      fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          model: "google/gemma-4-31b-it:free",
-          max_tokens: 2000,
-          messages: [
-            { role: "system", content: "You are a senior analyst. Write a clean HTML report based strictly on the research notes provided. Never invent data." },
-            { role: "user", content: reportPromptText },
-          ],
-        }),
-      }).then(r => r.json()),
-    ]);
+  await new Promise(r => setTimeout(r, 1000));
 
-    const report1 = report1Res.status === "fulfilled" && report1Res.value.choices
-      ? report1Res.value.choices[0]?.message?.content || null
-      : null;
+  try {
+    const r3 = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: "meta-llama/llama-3.3-70b-instruct:free",
+        max_tokens: 2000,
+        messages: [
+          { role: "system", content: "You are a senior analyst. Write a clean HTML report based strictly on the research notes. Never invent data." },
+          { role: "user", content: reportPromptText },
+        ],
+      }),
+    });
+    const d3 = await r3.json();
+    report1 = d3.choices?.[0]?.message?.content || null;
+  } catch(e) { report1 = null; }
 
-    const report2 = report2Res.status === "fulfilled" && report2Res.value.choices
-      ? report2Res.value.choices[0]?.message?.content || null
-      : null;
+  await new Promise(r => setTimeout(r, 1000));
 
-    let finalText = "";
+  try {
+    const r4 = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: "google/gemma-4-31b-it:free",
+        max_tokens: 2000,
+        messages: [
+          { role: "system", content: "You are a senior analyst. Write a clean HTML report based strictly on the research notes. Never invent data." },
+          { role: "user", content: reportPromptText },
+        ],
+      }),
+    });
+    const d4 = await r4.json();
+    report2 = d4.choices?.[0]?.message?.content || null;
+  } catch(e) { report2 = null; }
 
-    if (report1 && report2) {
-      // Both wrote a report — pick the best sections from each
+  let finalText = "";
+
+  if (report1 && report2) {
+    await new Promise(r => setTimeout(r, 1000));
+    try {
       const mergeRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers,
@@ -174,31 +181,22 @@ ${combinedResearch}`;
           model: "google/gemma-4-31b-it:free",
           max_tokens: 2000,
           messages: [
-            {
-              role: "system",
-              content: "You are a senior editor. You have two versions of the same HTML report. Merge them into one final version by picking the most detailed, specific, and accurate content from each. Keep the same HTML structure. No markdown, no backticks. Return only the final HTML.",
-            },
-            {
-              role: "user",
-              content: `Merge these two reports on "${topic}" into one definitive final report. Pick the best and most specific content from each:\n\nREPORT VERSION 1:\n${report1}\n\nREPORT VERSION 2:\n${report2}`,
-            },
+            { role: "system", content: "You are a senior editor. Merge two HTML reports into one final version picking the most detailed and specific content from each. No markdown, no backticks. Return only the final HTML." },
+            { role: "user", content: `Merge these two reports on "${topic}" into one definitive report:\n\nREPORT 1:\n${report1}\n\nREPORT 2:\n${report2}` },
           ],
         }),
       });
       const mergeData = await mergeRes.json();
       finalText = mergeData.choices?.[0]?.message?.content || report1;
-    } else {
-      finalText = report1 || report2 || "<p>Report generation failed — please try again.</p>";
-    }
-
-    finalText = finalText.replace(/```html/g, "").replace(/```/g, "").trim();
-
-    const lower = finalText.toLowerCase();
-    const sentiment = lower.includes("bullish") ? "bull" : lower.includes("bearish") ? "bear" : "neut";
-
-    return Response.json({ report: finalText, sentiment });
-
-  } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    } catch(e) { finalText = report1; }
+  } else {
+    finalText = report1 || report2 || "<p>Report generation failed — please try again.</p>";
   }
+
+  finalText = finalText.replace(/```html/g, "").replace(/```/g, "").trim();
+
+  const lower = finalText.toLowerCase();
+  const sentiment = lower.includes("bullish") ? "bull" : lower.includes("bearish") ? "bear" : "neut";
+
+  return Response.json({ report: finalText, sentiment });
 }
