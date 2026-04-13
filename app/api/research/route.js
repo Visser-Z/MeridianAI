@@ -43,54 +43,45 @@ Find and list:
 Do NOT format into a report. Just list everything you know as raw research notes. Be as specific as possible.`;
 
   try {
-    // STEP 1 — Both models do raw research in parallel
-    const [gptResearch, gemmaResearch] = await Promise.allSettled([
-      fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          model: "meta-llama/llama-3.3-70b-instruct:free",
-          max_tokens: 1500,
-          messages: [
-            { role: "system", content: "You are a thorough market researcher. Gather as many real facts, company names, prices, and data points as possible. Be specific. No formatting needed — just raw research notes." },
-            { role: "user", content: researchPrompt },
-          ],
-        }),
-      }).then(r => r.json()),
+  let gptRaw = "";
+let gemmaRaw = "";
 
-      fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          model: "google/gemma-4-31b-it:free",
-          max_tokens: 1500,
-          messages: [
-            { role: "system", content: "You are a thorough market researcher. Gather as many real facts, company names, prices, and data points as possible. Be specific. No formatting needed — just raw research notes." },
-            { role: "user", content: researchPrompt },
-          ],
-        }),
-      }).then(r => r.json()),
-    ]);
+try {
+  const r1 = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model: "meta-llama/llama-3.3-70b-instruct:free",
+      max_tokens: 1500,
+      messages: [
+        { role: "system", content: "You are a thorough market researcher. Gather real facts, company names, prices, and data points. No formatting — just raw research notes." },
+        { role: "user", content: researchPrompt },
+      ],
+    }),
+  });
+  const d1 = await r1.json();
+  gptRaw = d1.choices?.[0]?.message?.content || "";
+} catch(e) { gptRaw = ""; }
 
-    const gptRaw = gptResearch.status === "fulfilled" && gptResearch.value.choices
-      ? gptResearch.value.choices[0]?.message?.content || ""
-      : "";
+// Small delay between calls to avoid rate limiting
+await new Promise(r => setTimeout(r, 2000));
 
-    const gemmaRaw = gemmaResearch.status === "fulfilled" && gemmaResearch.value.choices
-      ? gemmaResearch.value.choices[0]?.message?.content || ""
-      : "";
-
-    if (!gptRaw && !gemmaRaw) {
-      return Response.json({ error: "Both research models failed — please try again." }, { status: 500 });
-    }
-
-    const combinedResearch = `
-RESEARCH FROM MODEL 1 (GPT):
-${gptRaw}
-
-RESEARCH FROM MODEL 2 (Gemma):
-${gemmaRaw}
-    `.trim();
+try {
+  const r2 = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model: "google/gemma-4-31b-it:free",
+      max_tokens: 1500,
+      messages: [
+        { role: "system", content: "You are a thorough market researcher. Gather real facts, company names, prices, and data points. No formatting — just raw research notes." },
+        { role: "user", content: researchPrompt },
+      ],
+    }),
+  });
+  const d2 = await r2.json();
+  gemmaRaw = d2.choices?.[0]?.message?.content || "";
+} catch(e) { gemmaRaw = ""; }
 
   // STEP 2 — Both models write the report simultaneously
     const reportPromptText = isSupplier
