@@ -98,7 +98,16 @@ export default function Home() {
       const res = await fetch('/api/digest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topics, email }),
+        body: JSON.stringify({ 
+  topics: topics.map(t => ({
+    name: t.name,
+    mode: t.mode,
+    report: t.report,
+    sentiment: t.sentiment,
+    updated: t.updated,
+  })), 
+  email 
+}),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
