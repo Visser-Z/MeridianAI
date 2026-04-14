@@ -1,4 +1,4 @@
-export const maxDuration = 90;
+export const maxDuration = 120;
 
 export async function POST(request) {
   const { topic, mode } = await request.json();
@@ -15,6 +15,47 @@ export async function POST(request) {
     "HTTP-Referer": "https://meridianai.vercel.app",
     "X-Title": "MeridianAI",
   };
+
+  const FREE_MODEL = "google/gemma-4-31b-it:free";
+  const PAID_MODEL = "mistralai/mistral-7b-instruct";
+
+ async function callModel(model, systemMsg, userMsg, maxTokens = 1500) {
+    try {
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model,
+          max_tokens: maxTokens,
+          messages: [
+            { role: "system", content: systemMsg },
+            { role: "user", content: userMsg },
+          ],
+        }),
+      });
+      const data = await res.json();
+      console.log(`Model ${model} response:`, JSON.stringify(data).slice(0, 200));
+      if (data.error) throw new Error(data.error.message);
+      return data.choices?.[0]?.message?.content || null;
+    } catch (e) {
+      console.log(`Model ${model} failed:`, e.message);
+      return null;
+    }
+  }
+
+  async function callWithFallback(systemMsg, userMsg, maxTokens = 1500) {
+    // Try free model first
+    const freeResult = await callModel(FREE_MODEL, systemMsg, userMsg, maxTokens);
+    if (freeResult) return { result: freeResult, model: "free" };
+
+    // Free model failed — fall back to Mistral
+    console.log("Free model failed, falling back to Mistral 7B");
+    await new Promise(r => setTimeout(r, 1000));
+    const paidResult = await callModel(PAID_MODEL, systemMsg, userMsg, maxTokens);
+    if (paidResult) return { result: paidResult, model: "paid" };
+
+    return { result: null, model: null };
+  }
 
   const researchPrompt = isSupplier
     ? `You are a supply chain researcher. Gather detailed raw facts about "${topic}". List:
@@ -37,12 +78,12 @@ Do NOT format into a report. Just write raw research notes with as many real fac
 Do NOT format into a report. Just write raw research notes with as many real facts as possible.`;
 
   const reportPrompt = (research) => isSupplier
-    ? `You are a senior supply chain analyst at MeridianAI. Using ONLY the research notes below, write a professional HTML report about "${topic}". Use only <p>, <strong>, <table>, <tr>, <th>, <td> tags. No markdown, no backticks, no extra text outside HTML.
+    ? `You are a senior supply chain analyst at MeridianAI. Using ONLY the research notes below, write a professional HTML report about "${topic}". Use only <p>, <strong>, <table>, <tr>, <th>, <td> tags. No markdown, no backticks.
 
 STRICT RULES:
 - Only use company names that appear in the research notes
 - Only use prices that appear in the research notes
-- Reliability scores out of 10 based on reputation in research
+- Reliability scores out of 10
 - If data is missing write "data unavailable"
 
 Structure EXACTLY like this:
@@ -60,11 +101,11 @@ Structure EXACTLY like this:
 
 RESEARCH NOTES:
 ${research}`
-    : `You are a senior market analyst at MeridianAI. Using ONLY the research notes below, write a professional HTML briefing about "${topic}". Use only <p> and <strong> tags. No markdown, no backticks, no extra text outside HTML.
+    : `You are a senior market analyst at MeridianAI. Using ONLY the research notes below, write a professional HTML briefing about "${topic}". Use only <p> and <strong> tags. No markdown, no backticks.
 
 STRICT RULES:
 - Only use facts that appear in the research notes
-- Be specific with numbers and names from the research
+- Be specific with numbers and names
 - If something is unknown write "data unavailable"
 
 Structure EXACTLY like this:
@@ -78,83 +119,62 @@ Structure EXACTLY like this:
 RESEARCH NOTES:
 ${research}`;
 
-  async function callGemma(prompt, systemMsg, maxTokens = 1500) {
-    try {
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          model: "google/gemma-4-31b-it:free",
-          max_tokens: maxTokens,
-          messages: [
-            { role: "system", content: systemMsg },
-            { role: "user", content: prompt },
-          ],
-        }),
-      });
-      const data = await res.json();
-      return data.choices?.[0]?.message?.content || null;
-    } catch (e) {
-      return null;
-    }
-  }
-
   try {
     // STEP 1 — First research pass
-    const research1 = await callGemma(
+    const { result: research1 } = await callWithFallback(
+      "You are a thorough market researcher. Gather as many real facts, company names, prices, and data points as possible. Write detailed raw research notes. No formatting.",
       researchPrompt,
-      "You are a thorough market researcher. Gather as many real facts, company names, prices, and data points as possible about the given topic. Write detailed raw research notes.",
       1500
     );
 
-    await new Promise(r => setTimeout(r, 2000));
+    await new Promise(r => setTimeout(r, 1500));
 
-    // STEP 2 — Second research pass with a slightly different angle
-    const research2 = await callGemma(
-      researchPrompt + "\n\nFocus especially on finding additional company names, pricing data, and market details that might have been missed in a first pass.",
-      "You are a thorough supply chain and market researcher. Your goal is to find specific company names, real prices, and detailed market data. Write detailed raw research notes.",
+    // STEP 2 — Second research pass for more depth
+    const { result: research2 } = await callWithFallback(
+      "You are a thorough market researcher. Find additional company names, pricing data, and market details. Write detailed raw research notes. No formatting.",
+      researchPrompt + "\n\nFocus on finding additional suppliers, pricing data, and market details not covered in a basic search.",
       1500
     );
-
-    const combinedResearch = `
-RESEARCH PASS 1:
-${research1 || "No data from first pass"}
-
-RESEARCH PASS 2:
-${research2 || "No data from second pass"}
-    `.trim();
 
     if (!research1 && !research2) {
       return Response.json({ error: "Research unavailable — please try again in a moment." }, { status: 500 });
     }
 
-    await new Promise(r => setTimeout(r, 2000));
+    const combinedResearch = `
+RESEARCH PASS 1:
+${research1 || "No data"}
 
-    // STEP 3 — Write the report from combined research
-    const report1 = await callGemma(
+RESEARCH PASS 2:
+${research2 || "No data"}
+    `.trim();
+
+    await new Promise(r => setTimeout(r, 1500));
+
+    // STEP 3 — Write the report
+    const { result: report1 } = await callWithFallback(
+      "You are a senior analyst at MeridianAI. Write a clean professional HTML report based strictly on the research notes provided. Never invent data. Return only HTML.",
       reportPrompt(combinedResearch),
-      "You are a senior analyst at MeridianAI. Write a clean professional HTML report based strictly on the research notes provided. Never invent or assume data not in the notes. Return only HTML, nothing else.",
       2000
     );
 
-    await new Promise(r => setTimeout(r, 2000));
+    await new Promise(r => setTimeout(r, 1500));
 
-    // STEP 4 — Second version of the report for quality
-    const report2 = await callGemma(
-      reportPrompt(combinedResearch) + "\n\nMake sure every company in the research notes appears in the supplier table. Be as specific as possible with pricing and location data.",
-      "You are a senior analyst at MeridianAI. Write a clean professional HTML report based strictly on the research notes. Focus on completeness — include every company and data point mentioned. Return only HTML.",
+    // STEP 4 — Second report version for quality
+    const { result: report2 } = await callWithFallback(
+      "You are a senior analyst. Write a detailed HTML report from the research notes. Include every company and data point mentioned. Return only HTML.",
+      reportPrompt(combinedResearch) + "\n\nMake sure every company in the research notes appears in the report.",
       2000
     );
-
-    await new Promise(r => setTimeout(r, 2000));
 
     let finalText = "";
 
     if (report1 && report2) {
-      // STEP 5 — Merge both report versions into one definitive report
-      const merged = await callGemma(
-        `You have two versions of a report on "${topic}". Merge them into one final definitive HTML report. Pick the most specific, detailed, and accurate content from each version. Keep the same HTML structure. Return only the final HTML, nothing else.\n\nREPORT VERSION 1:\n${report1}\n\nREPORT VERSION 2:\n${report2}`,
-        "You are a senior editor. Merge two HTML reports into one final version. Pick the best content from each. No markdown, no backticks. Return only clean HTML.",
+      await new Promise(r => setTimeout(r, 1500));
+
+      // STEP 5 — Merge both reports
+      const { result: merged } = await callWithFallback(
+        "You are a senior editor. Merge two HTML reports into one final version picking the most detailed content from each. No markdown, no backticks. Return only clean HTML.",
+        `Merge these two reports on "${topic}" into one definitive final report. Pick the most specific and detailed content from each:\n\nREPORT 1:\n${report1}\n\nREPORT 2:\n${report2}`,
         2000
       );
       finalText = merged || report1;
