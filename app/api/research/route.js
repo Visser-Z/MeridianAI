@@ -15,20 +15,29 @@ export async function POST(request) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   try {
-    // STEP 1 — Research phase
+    // STEP 1 — Research phase (with live web search)
     const researchResponse = await client.messages.create({
-      model: "claude-haiku-4-5",
-      max_tokens: 2000,
-      system: `You are a thorough supply chain and market researcher. Your job is to gather raw facts only — no formatting, no reports. Just detailed research notes with real company names, real prices, and real data.`,
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 4000,
+      tools: [
+        {
+          type: "web_search_20250305",
+          name: "web_search",
+        }
+      ],
+      system: `You are a thorough supply chain and market researcher with access to live web search. 
+Search for current, real-time data. Your job is to gather raw facts only — no formatting, no reports. 
+Just detailed research notes with real company names, real prices, and real data from current sources.
+Always search for the most up-to-date pricing and market conditions.`,
       messages: [{
         role: "user",
         content: isSupplier
-          ? `Research "${topic}" as a commodity or material to purchase. The buyer is based in ${userLocation}.
+          ? `Search the web and research "${topic}" as a commodity or material to purchase. The buyer is based in ${userLocation}. Use web search to find current 2024/2025 data.
 
 Gather and list:
 1. Major global suppliers of ${topic} — use REAL company names, not just countries
 2. Their headquarters city and country
-3. Current estimated pricing per unit/ton/kg with currency
+3. Current estimated pricing per unit/ton/kg with currency (search for latest prices)
 4. Their international reputation and reliability
 5. Current global supply chain risks, tariffs, sanctions affecting ${topic}
 6. Local or regional suppliers near ${userLocation} that supply ${topic}
@@ -38,27 +47,31 @@ Gather and list:
 10. Any free trade agreements between ${userLocation} and major supplier countries
 
 Be extremely specific. Use real company names. Give real price ranges. This is raw research only.`
-          : `Research "${topic}" thoroughly. The user is based in ${userLocation}.
+          : `Search the web and research "${topic}" thoroughly with current data. The user is based in ${userLocation}. Use web search to find the latest news and data from 2024/2025.
 
 Gather and list:
 1. Current state with real numbers and data
-2. Latest developments and news
+2. Latest developments and news (search for recent articles)
 3. Key companies and players involved
 4. Market sentiment and why
 5. Risks and opportunities
 6. Regional impact on ${userLocation} specifically
 7. Expert opinions and forecasts
 
-Raw research notes only. Be specific with real data.`
+Raw research notes only. Be specific with real, current data.`
       }]
     });
 
-    const rawResearch = researchResponse.content[0].text;
+    // Extract text from response (web search returns multiple content blocks)
+    const rawResearch = researchResponse.content
+      .map(block => block.type === "text" ? block.text : "")
+      .filter(Boolean)
+      .join("\n");
 
     // STEP 2 — Report generation phase
     const reportResponse = await client.messages.create({
       model: "claude-haiku-4-5",
-      max_tokens: 2000,
+      max_tokens: 4000,
       system: `You are a senior analyst at MeridianAI. Write professional HTML reports based strictly on research notes. Never invent data not in the notes. Return only clean HTML using only allowed tags.`,
       messages: [{
         role: "user",
