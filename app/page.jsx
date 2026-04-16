@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 const dots = ['#D4537E','#7F77DD','#1D9E75','#D85A30','#BA7517','#378ADD','#639922'];
 
 export default function Home() {
+  const [userLocation, setUserLocation] = useState('South Africa');
   const [topics, setTopics] = useState([]);
   const [activeTopic, setActiveTopic] = useState(null);
   const [page, setPage] = useState('dashboard');
@@ -59,7 +60,7 @@ export default function Home() {
           ? fetch('/api/resolve', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ topic: topic.name }),
+              body: JSON.stringify({ topic: topic.name, mode: topic.mode, location: userLocation }),
             })
           : Promise.resolve(null),
       ]);
@@ -149,6 +150,12 @@ export default function Home() {
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#D4537E' }} />
           MeridianAI
         </div>
+        <input
+  value={userLocation}
+  onChange={e => setUserLocation(e.target.value)}
+  placeholder="Your location..."
+  style={{ fontSize: 12, padding: '5px 10px', borderRadius: 6, border: '0.5px solid #2a2a2a', background: '#1a1a1a', color: '#fff', outline: 'none', width: 160 }}
+/>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button onClick={() => setShowEmailModal(true)} style={{ fontSize: 12, fontWeight: 500, padding: '6px 14px', borderRadius: 6, background: '#2a0f1a', color: '#D4537E', border: '0.5px solid #3a1525', cursor: 'pointer' }}>
             Send digest
