@@ -1,16 +1,17 @@
 import { Redis } from "@upstash/redis";
 import crypto from "crypto";
+import { NextRequest } from "next/server";
 
 const redis = new Redis({
-  url: process.env.KV_REST_API_URL,
-  token: process.env.KV_REST_API_TOKEN,
+  url: process.env.KV_REST_API_URL!,
+  token: process.env.KV_REST_API_TOKEN!,
 });
 
-export async function POST(req) {
+export async function POST(req: NextRequest) {
   const rawBody = await req.text();
   const signature = req.headers.get("paddle-signature") || "";
 
-  const secret = process.env.PADDLE_WEBHOOK_SECRET;
+  const secret = process.env.PADDLE_WEBHOOK_SECRET!;
   const [tsPart, h1Part] = signature.split(";");
   const ts = tsPart?.split("=")[1];
   const h1 = h1Part?.split("=")[1];
@@ -30,7 +31,7 @@ export async function POST(req) {
   }
 
   if (eventType === "subscription.activated" || eventType === "subscription.created") {
-    const existing = await redis.get("user:" + email) || {};
+    const existing = (await redis.get("user:" + email) as any) || {};
     await redis.set("user:" + email, {
       ...existing,
       email,
@@ -40,7 +41,7 @@ export async function POST(req) {
   }
 
   if (eventType === "subscription.canceled" || eventType === "subscription.paused") {
-    const existing = await redis.get("user:" + email) || {};
+    const existing = (await redis.get("user:" + email) as any) || {};
     await redis.set("user:" + email, { ...existing, subscribed: false });
   }
 
