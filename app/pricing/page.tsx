@@ -1,9 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useState } from "react";
 
 export default function PricingPage() {
-  const { user } = useUser();
   const [loading, setLoading] = useState(false);
 
   const handleCheckout = () => {
