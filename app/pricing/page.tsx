@@ -6,7 +6,7 @@ export default function PricingPage() {
 
   const handleCheckout = () => {
     setLoading(true);
-    window.location.href = "pri_01kpg4b70szfj3cccyb4szzh2k";
+    window.location.href = "https://buy.paddle.com/product/pri_01kpg4b70szfj3cccyb4szzh2k";
   };
 
   return (
