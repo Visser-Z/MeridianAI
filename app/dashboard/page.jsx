@@ -1,12 +1,9 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { useUser, useClerk } from '@clerk/nextjs';
 
 const dots = ['#D4537E','#7F77DD','#1D9E75','#D85A30','#BA7517','#378ADD','#639922'];
 
 export default function Home() {
-  const { user } = useUser();
-  const { signOut } = useClerk();
   const [userLocation, setUserLocation] = useState('South Africa');
   const [topics, setTopics] = useState([]);
   const [topicsLoaded, setTopicsLoaded] = useState(false);
@@ -21,55 +18,68 @@ export default function Home() {
   const [digestStatus, setDigestStatus] = useState(null);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [userEmail, setUserEmail] = useState('');
 
-  // Load topics from Redis when user loads
+  // Load session info
   useEffect(() => {
-    if (!user) return;
-    fetch(`/api/topics?userId=${user.id}`)
+    fetch('/api/auth/me')
+      .then(r => r.json())
+      .then(data => { if (data.email) setUserEmail(data.email); })
+      .catch(() => {});
+  }, []);
+
+  // Load topics from Redis
+  useEffect(() => {
+    if (!userEmail) return;
+    fetch('/api/topics?userId=' + encodeURIComponent(userEmail))
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) setTopics(data);
         setTopicsLoaded(true);
       })
       .catch(() => setTopicsLoaded(true));
-  }, [user]);
+  }, [userEmail]);
 
-  // Auto-save topics to Redis whenever they change
+  // Auto-save topics to Redis
   useEffect(() => {
-    if (!user || !topicsLoaded) return;
+    if (!userEmail || !topicsLoaded) return;
     fetch('/api/topics', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: user.id, topics }),
+      body: JSON.stringify({ userId: userEmail, topics }),
     }).catch(() => {});
-  }, [topics, user, topicsLoaded]);
+  }, [topics, userEmail, topicsLoaded]);
 
   // Load saved digest settings
   useEffect(() => {
-    if (!user) return;
-    fetch(`/api/digest-settings?userId=${user.id}`)
+    if (!userEmail) return;
+    fetch('/api/digest-settings?userId=' + encodeURIComponent(userEmail))
       .then(r => r.json())
       .then(data => {
         if (data.email) setEmail(data.email);
         if (data.sendHour !== undefined) setSendHour(data.sendHour);
       })
       .catch(() => {});
-  }, [user]);
+  }, [userEmail]);
 
-  // Save digest settings to Redis
   async function saveDigestSettings(emailVal, hourVal) {
-    if (!user) return;
+    if (!userEmail) return;
     await fetch('/api/digest-settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        userId: user.id,
+        userId: userEmail,
         email: emailVal,
         sendHour: hourVal,
         location: userLocation,
         topics: topics.map(t => ({ id: t.id, name: t.name, mode: t.mode })),
       }),
     });
+  }
+
+  async function handleSignOut() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    window.location.href = '/';
   }
 
   function addTopic() {
@@ -128,7 +138,7 @@ export default function Home() {
         const symbolData = await symbolRes.json();
         symbol = symbolData.symbol;
         if (symbol && symbol !== 'NONE') {
-          const chartRes = await fetch(`/api/chart?symbol=${symbol}`);
+          const chartRes = await fetch('/api/chart?symbol=' + symbol);
           const cd = await chartRes.json();
           if (!cd.error) chartData = cd;
         }
@@ -140,7 +150,7 @@ export default function Home() {
       } : t));
     } catch (err) {
       setTopics(prev => prev.map(t => t.id === topicId ? {
-        ...t, report: `<p><strong>Error:</strong> ${err.message}</p>`
+        ...t, report: '<p><strong>Error:</strong> ' + err.message + '</p>'
       } : t));
     } finally {
       setLoading(false);
@@ -157,11 +167,8 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           topics: topics.map(t => ({
-            name: t.name,
-            mode: t.mode,
-            report: t.report,
-            sentiment: t.sentiment,
-            updated: t.updated,
+            name: t.name, mode: t.mode, report: t.report,
+            sentiment: t.sentiment, updated: t.updated,
           })),
           email
         }),
@@ -178,17 +185,13 @@ export default function Home() {
 
   function formatHour(h) {
     if (h === 0) return '12:00 AM';
-    if (h < 12) return `${h}:00 AM`;
+    if (h < 12) return h + ':00 AM';
     if (h === 12) return '12:00 PM';
-    return `${h - 12}:00 PM`;
+    return (h - 12) + ':00 PM';
   }
 
   const topic = topics.find(t => t.id === activeTopic);
-  const userInitials = user?.firstName && user?.lastName
-    ? `${user.firstName[0]}${user.lastName[0]}`
-    : user?.firstName
-    ? user.firstName[0]
-    : user?.emailAddresses?.[0]?.emailAddress?.[0]?.toUpperCase() || 'ME';
+  const userInitials = userEmail ? userEmail[0].toUpperCase() : 'ME';
 
   const s = {
     topbar: { height: 56, background: '#111', borderBottom: '0.5px solid #1e1e1e', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px' },
@@ -229,28 +232,14 @@ export default function Home() {
             Send digest
           </button>
           <div style={{ fontSize: 11, background: '#1a1a1a', color: '#555', border: '0.5px solid #2a2a2a', padding: '3px 10px', borderRadius: 6 }}>Pro plan</div>
-
-          {/* User avatar with dropdown */}
           <div style={{ position: 'relative' }}>
-            <div
-              onClick={() => setShowUserMenu(prev => !prev)}
-              style={{ width: 28, height: 28, borderRadius: '50%', background: '#2a0f1a', border: '0.5px solid #D4537E', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#D4537E', cursor: 'pointer', fontWeight: 600 }}
-            >
+            <div onClick={() => setShowUserMenu(prev => !prev)} style={{ width: 28, height: 28, borderRadius: '50%', background: '#2a0f1a', border: '0.5px solid #D4537E', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#D4537E', cursor: 'pointer', fontWeight: 600 }}>
               {userInitials}
             </div>
             {showUserMenu && (
               <div style={{ position: 'absolute', right: 0, top: 36, background: '#111', border: '0.5px solid #2a2a2a', borderRadius: 8, padding: 8, minWidth: 180, zIndex: 50 }}>
-                <div style={{ padding: '6px 10px', fontSize: 12, color: '#555', borderBottom: '0.5px solid #1e1e1e', marginBottom: 4 }}>
-                  {user?.primaryEmailAddress?.emailAddress}
-                </div>
-                <div
-                  onClick={() => { setShowUserMenu(false); signOut(); }}
-                  style={{ padding: '8px 10px', fontSize: 13, color: '#E24B4A', cursor: 'pointer', borderRadius: 5 }}
-                  onMouseEnter={e => e.target.style.background = '#1a1a1a'}
-                  onMouseLeave={e => e.target.style.background = 'transparent'}
-                >
-                  Sign out
-                </div>
+                <div style={{ padding: '6px 10px', fontSize: 12, color: '#555', borderBottom: '0.5px solid #1e1e1e', marginBottom: 4 }}>{userEmail}</div>
+                <div onClick={handleSignOut} style={{ padding: '8px 10px', fontSize: 13, color: '#E24B4A', cursor: 'pointer', borderRadius: 5 }}>Sign out</div>
               </div>
             )}
           </div>
@@ -289,15 +278,13 @@ export default function Home() {
 
         {/* Main */}
         <div style={s.main}>
-
-          {/* Dashboard */}
           {page === 'dashboard' && (
             topics.length === 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 20px', textAlign: 'center' }}>
                 <div style={{ width: 48, height: 48, borderRadius: 12, background: '#161616', border: '0.5px solid #222', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
                   <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="8" stroke="#D4537E" strokeWidth="1.4"/><path d="M11 8v3.5l2.5 2" stroke="#D4537E" strokeWidth="1.4" strokeLinecap="round"/></svg>
                 </div>
-                <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>Welcome{user?.firstName ? `, ${user.firstName}` : ''}</div>
+                <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>Welcome to MeridianAI</div>
                 <div style={{ fontSize: 13, color: '#555', lineHeight: 1.6, maxWidth: 360 }}>Add a topic in the sidebar. Choose <strong style={{ color: '#777' }}>Supply chain</strong> for supplier comparisons, or <strong style={{ color: '#777' }}>Market intel</strong> for briefings with live price charts.</div>
               </div>
             ) : (
@@ -324,7 +311,7 @@ export default function Home() {
                         </div>
                         <div>
                           <div style={{ fontSize: 14, fontWeight: 500, color: '#ccc' }}>{t.name}</div>
-                          <div style={{ fontSize: 12, color: '#444' }}>{t.chartData ? `${t.chartData.symbol} · $${t.chartData.currentPrice}` : t.report ? 'Updated ' + t.updated : 'No briefing yet'}</div>
+                          <div style={{ fontSize: 12, color: '#444' }}>{t.chartData ? t.chartData.symbol + ' · $' + t.chartData.currentPrice : t.report ? 'Updated ' + t.updated : 'No briefing yet'}</div>
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -338,14 +325,12 @@ export default function Home() {
             )
           )}
 
-          {/* Daily digest page */}
           {page === 'digest' && (
             <>
               <div style={{ marginBottom: 28 }}>
                 <div style={{ fontSize: 20, fontWeight: 500, marginBottom: 3 }}>Daily digest</div>
                 <div style={{ fontSize: 13, color: '#555' }}>Get a fresh briefing of all your topics delivered to your inbox every day</div>
               </div>
-
               {topics.length === 0 ? (
                 <div style={s.card}>
                   <div style={{ textAlign: 'center', padding: '40px 20px' }}>
@@ -366,62 +351,31 @@ export default function Home() {
                       </div>
                     ))}
                   </div>
-
                   <div style={s.card}>
                     <div style={{ fontSize: 14, fontWeight: 500, color: '#fff', marginBottom: 16 }}>Digest settings</div>
-
                     <div style={{ marginBottom: 16 }}>
                       <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>Email address</div>
-                      <input
-                        value={email}
-                        onChange={e => setEmail(e.target.value)}
-                        placeholder="your@email.com"
-                        style={{ width: '100%', fontSize: 13, padding: '9px 12px', borderRadius: 7, border: '0.5px solid #2a2a2a', background: '#1a1a1a', color: '#fff', outline: 'none' }}
-                      />
+                      <input value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" style={{ width: '100%', fontSize: 13, padding: '9px 12px', borderRadius: 7, border: '0.5px solid #2a2a2a', background: '#1a1a1a', color: '#fff', outline: 'none' }} />
                     </div>
-
                     <div style={{ marginBottom: 24 }}>
                       <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>Daily send time</div>
-                      <select
-                        value={sendHour}
-                        onChange={e => setSendHour(Number(e.target.value))}
-                        style={{ width: '100%', fontSize: 13, padding: '9px 12px', borderRadius: 7, border: '0.5px solid #2a2a2a', background: '#1a1a1a', color: '#fff', outline: 'none', cursor: 'pointer' }}
-                      >
+                      <select value={sendHour} onChange={e => setSendHour(Number(e.target.value))} style={{ width: '100%', fontSize: 13, padding: '9px 12px', borderRadius: 7, border: '0.5px solid #2a2a2a', background: '#1a1a1a', color: '#fff', outline: 'none', cursor: 'pointer' }}>
                         {Array.from({ length: 24 }, (_, i) => (
                           <option key={i} value={i}>{formatHour(i)}</option>
                         ))}
                       </select>
                     </div>
-
-                    <button
-                      onClick={async () => {
-                        await saveDigestSettings(email, sendHour);
-                        setDigestStatus('success');
-                        setTimeout(() => setDigestStatus(null), 3000);
-                      }}
-                      disabled={!email.trim()}
-                      style={{ width: '100%', fontSize: 13, fontWeight: 500, padding: '10px', borderRadius: 7, background: '#D4537E', color: '#fff', border: 'none', cursor: !email.trim() ? 'not-allowed' : 'pointer', opacity: !email.trim() ? 0.5 : 1, marginBottom: 12 }}
-                    >
+                    <button onClick={async () => { await saveDigestSettings(email, sendHour); setDigestStatus('success'); setTimeout(() => setDigestStatus(null), 3000); }} disabled={!email.trim()} style={{ width: '100%', fontSize: 13, fontWeight: 500, padding: '10px', borderRadius: 7, background: '#D4537E', color: '#fff', border: 'none', cursor: !email.trim() ? 'not-allowed' : 'pointer', opacity: !email.trim() ? 0.5 : 1, marginBottom: 12 }}>
                       Save digest settings
                     </button>
-
-                    {digestStatus === 'success' && (
-                      <div style={{ fontSize: 13, color: '#1D9E75', background: '#0d2018', border: '0.5px solid #1D9E75', borderRadius: 6, padding: '10px 14px' }}>
-                        Settings saved — your digest will be sent daily at {formatHour(sendHour)}
-                      </div>
-                    )}
-                    {digestStatus && digestStatus.startsWith('error') && (
-                      <div style={{ fontSize: 13, color: '#E24B4A', background: '#25100f', border: '0.5px solid #E24B4A', borderRadius: 6, padding: '10px 14px' }}>
-                        {digestStatus}
-                      </div>
-                    )}
+                    {digestStatus === 'success' && <div style={{ fontSize: 13, color: '#1D9E75', background: '#0d2018', border: '0.5px solid #1D9E75', borderRadius: 6, padding: '10px 14px' }}>Settings saved — your digest will be sent daily at {formatHour(sendHour)}</div>}
+                    {digestStatus && digestStatus.startsWith('error') && <div style={{ fontSize: 13, color: '#E24B4A', background: '#25100f', border: '0.5px solid #E24B4A', borderRadius: 6, padding: '10px 14px' }}>{digestStatus}</div>}
                   </div>
                 </>
               )}
             </>
           )}
 
-          {/* Research page */}
           {page === 'research' && topic && (
             <>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28 }}>
@@ -468,11 +422,9 @@ export default function Home() {
                       <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="9" cy="9" r="6" stroke="#D4537E" strokeWidth="1.4"/><path d="M14 14L18 18" stroke="#D4537E" strokeWidth="1.4" strokeLinecap="round"/></svg>
                     </div>
                     <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>
-                      {topic.mode === 'supplier' ? `Research suppliers & pricing for "${topic.name}"` : `Research "${topic.name}"`}
+                      {topic.mode === 'supplier' ? 'Research suppliers & pricing for "' + topic.name + '"' : 'Research "' + topic.name + '"'}
                     </div>
-                    <div style={{ fontSize: 13, color: '#555', marginBottom: 22 }}>
-                      Claude will research this with live web search and synthesize the best answer
-                    </div>
+                    <div style={{ fontSize: 13, color: '#555', marginBottom: 22 }}>Claude will research this with live web search and synthesize the best answer</div>
                     <button onClick={() => runResearch(topic.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, padding: '9px 18px', borderRadius: 7, background: '#D4537E', color: '#fff', border: 'none', cursor: 'pointer' }}>
                       Generate briefing
                     </button>
@@ -491,7 +443,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Quick send email modal */}
       {showEmailModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
           <div style={{ background: '#111', border: '0.5px solid #2a2a2a', borderRadius: 12, padding: 28, width: '100%', maxWidth: 400 }}>
@@ -510,11 +461,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Close user menu when clicking outside */}
-      {showUserMenu && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setShowUserMenu(false)} />
-      )}
-
+      {showUserMenu && <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setShowUserMenu(false)} />}
       <style>{`@keyframes spin{to{transform:rotate(360deg);}}*{box-sizing:border-box;margin:0;padding:0;}`}</style>
     </div>
   );
@@ -546,11 +493,11 @@ function PriceChart({ data, dot }) {
           responsive: true, maintainAspectRatio: false,
           plugins: {
             legend: { display: false },
-            tooltip: { callbacks: { label: ctx => ` $${ctx.parsed.y.toFixed(2)}` }, backgroundColor: '#1a1a1a', titleColor: '#888', bodyColor: '#fff', borderColor: '#2a2a2a', borderWidth: 1 }
+            tooltip: { callbacks: { label: ctx => ' $' + ctx.parsed.y.toFixed(2) }, backgroundColor: '#1a1a1a', titleColor: '#888', bodyColor: '#fff', borderColor: '#2a2a2a', borderWidth: 1 }
           },
           scales: {
             x: { grid: { color: '#1a1a1a' }, ticks: { color: '#555', font: { size: 11 }, maxTicksLimit: 6 } },
-            y: { grid: { color: '#1a1a1a' }, ticks: { color: '#555', font: { size: 11 }, callback: v => `$${v.toLocaleString()}` }, position: 'right' }
+            y: { grid: { color: '#1a1a1a' }, ticks: { color: '#555', font: { size: 11 }, callback: v => '$' + v.toLocaleString() }, position: 'right' }
           }
         }
       });

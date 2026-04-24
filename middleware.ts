@@ -1,33 +1,31 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { jwtVerify } from "jose";
 
-const isPublicRoute = createRouteMatcher([
-  "/",
-  "/sign-in(.*)",
-  "/sign-up(.*)",
-  "/pricing(.*)",
-  "/api/webhooks(.*)",
-]);
+const PUBLIC_PATHS = ["/", "/api/webhooks", "/api/auth"];
 
-const isSubscribedRoute = createRouteMatcher(["/dashboard(.*)"]);
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
 
-export default clerkMiddleware(async (auth, req) => {
-  const { userId, sessionClaims } = await auth();
-
-  if (!userId && !isPublicRoute(req)) {
-    return NextResponse.redirect(new URL("/sign-in", req.url));
+  if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) {
+    return NextResponse.next();
   }
 
-  if (userId && isSubscribedRoute(req)) {
-    const metadata = sessionClaims?.metadata as Record<string, unknown> | undefined;
-    const isSubscribed = metadata?.subscribed;
-    if (!isSubscribed) {
-      return NextResponse.redirect(new URL("/pricing", req.url));
-    }
+  const token = request.cookies.get("meridian_session")?.value;
+
+  if (!token) {
+    return NextResponse.redirect(new URL("/", request.url));
   }
 
-  return NextResponse.next();
-});
+  try {
+    const secret = new TextEncoder().encode(process.env.SESSION_SECRET);
+    await jwtVerify(token, secret);
+    return NextResponse.next();
+  } catch {
+    const response = NextResponse.redirect(new URL("/", request.url));
+    response.cookies.delete("meridian_session");
+    return response;
+  }
+}
 
 export const config = {
   matcher: ["/((?!_next|favicon.ico|.*\\..*).*)"],
