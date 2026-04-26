@@ -33,25 +33,36 @@ export default function Home() {
       .catch(() => {});
   }, []);
 
+  // Load topics AND preferences from Redis
   useEffect(() => {
     if (!userEmail) return;
     fetch('/api/topics?userId=' + encodeURIComponent(userEmail))
       .then(r => r.json())
       .then(data => {
-        if (Array.isArray(data)) setTopics(data);
+        if (Array.isArray(data.topics)) setTopics(data.topics);
+        if (data.prefs) {
+          if (data.prefs.currency) setCurrency(data.prefs.currency);
+          if (data.prefs.unit) setUnit(data.prefs.unit);
+          if (data.prefs.location) setUserLocation(data.prefs.location);
+        }
         setTopicsLoaded(true);
       })
       .catch(() => setTopicsLoaded(true));
   }, [userEmail]);
 
+  // Auto-save topics AND preferences to Redis
   useEffect(() => {
     if (!userEmail || !topicsLoaded) return;
     fetch('/api/topics', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: userEmail, topics }),
+      body: JSON.stringify({
+        userId: userEmail,
+        topics,
+        prefs: { currency, unit, location: userLocation },
+      }),
     }).catch(() => {});
-  }, [topics, userEmail, topicsLoaded]);
+  }, [topics, currency, unit, userLocation, userEmail, topicsLoaded]);
 
   useEffect(() => {
     if (!userEmail) return;
@@ -125,17 +136,11 @@ export default function Home() {
     setChatMessages(newMessages);
     setChatInput('');
     setChatLoading(true);
-
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: newMessages,
-          topics,
-          location: userLocation,
-          currency,
-        }),
+        body: JSON.stringify({ messages: newMessages, topics, location: userLocation, currency }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -202,10 +207,7 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          topics: topics.map(t => ({
-            name: t.name, mode: t.mode, report: t.report,
-            sentiment: t.sentiment, updated: t.updated,
-          })),
+          topics: topics.map(t => ({ name: t.name, mode: t.mode, report: t.report, sentiment: t.sentiment, updated: t.updated })),
           email
         }),
       });
@@ -313,7 +315,6 @@ export default function Home() {
 
         <div style={s.main}>
 
-          {/* Dashboard */}
           {page === 'dashboard' && (
             topics.length === 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 20px', textAlign: 'center' }}>
@@ -361,52 +362,32 @@ export default function Home() {
             )
           )}
 
-          {/* AI Advisor Chat */}
           {page === 'chat' && (
             <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)' }}>
               <div style={{ marginBottom: 20 }}>
                 <div style={{ fontSize: 20, fontWeight: 500, marginBottom: 3 }}>AI Advisor</div>
                 <div style={{ fontSize: 13, color: '#555' }}>Ask anything about your topics — get recommendations based on your research</div>
               </div>
-
               <div style={{ flex: 1, overflowY: 'auto', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {chatMessages.length === 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 20 }}>
                     <div style={{ fontSize: 13, color: '#444', marginBottom: 8 }}>Try asking:</div>
-                    {[
-                      'What should I buy right now based on my research?',
-                      'Which of my topics has the most risk?',
-                      'Are there any good buying opportunities across my topics?',
-                      'What connections do you see between my topics?',
-                    ].map(suggestion => (
-                      <div key={suggestion} onClick={() => { setChatInput(suggestion); }} style={{ fontSize: 13, color: '#555', background: '#111', border: '0.5px solid #1e1e1e', borderRadius: 8, padding: '10px 14px', cursor: 'pointer' }}
+                    {['What should I buy right now based on my research?','Which of my topics has the most risk?','Are there any good buying opportunities across my topics?','What connections do you see between my topics?'].map(suggestion => (
+                      <div key={suggestion} onClick={() => setChatInput(suggestion)} style={{ fontSize: 13, color: '#555', background: '#111', border: '0.5px solid #1e1e1e', borderRadius: 8, padding: '10px 14px', cursor: 'pointer' }}
                         onMouseEnter={e => e.currentTarget.style.borderColor = '#D4537E'}
-                        onMouseLeave={e => e.currentTarget.style.borderColor = '#1e1e1e'}
-                      >
+                        onMouseLeave={e => e.currentTarget.style.borderColor = '#1e1e1e'}>
                         {suggestion}
                       </div>
                     ))}
                   </div>
                 )}
-
                 {chatMessages.map((msg, i) => (
                   <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                    <div style={{
-                      maxWidth: '75%',
-                      padding: '12px 16px',
-                      borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
-                      background: msg.role === 'user' ? '#2a0f1a' : '#111',
-                      border: '0.5px solid ' + (msg.role === 'user' ? '#3a1525' : '#1e1e1e'),
-                      fontSize: 14,
-                      color: msg.role === 'user' ? '#D4537E' : '#aaa',
-                      lineHeight: 1.7,
-                      whiteSpace: 'pre-wrap',
-                    }}>
+                    <div style={{ maxWidth: '75%', padding: '12px 16px', borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px', background: msg.role === 'user' ? '#2a0f1a' : '#111', border: '0.5px solid ' + (msg.role === 'user' ? '#3a1525' : '#1e1e1e'), fontSize: 14, color: msg.role === 'user' ? '#D4537E' : '#aaa', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
                       {msg.content}
                     </div>
                   </div>
                 ))}
-
                 {chatLoading && (
                   <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
                     <div style={{ padding: '12px 16px', borderRadius: '12px 12px 12px 2px', background: '#111', border: '0.5px solid #1e1e1e', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -417,23 +398,13 @@ export default function Home() {
                 )}
                 <div ref={chatEndRef} />
               </div>
-
               <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  value={chatInput}
-                  onChange={e => setChatInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendChatMessage()}
-                  placeholder="Ask about your topics, get recommendations..."
-                  style={{ flex: 1, fontSize: 13, padding: '11px 14px', borderRadius: 8, border: '0.5px solid #2a2a2a', background: '#111', color: '#fff', outline: 'none' }}
-                />
-                <button onClick={sendChatMessage} disabled={chatLoading || !chatInput.trim()} style={{ fontSize: 13, fontWeight: 500, padding: '11px 18px', borderRadius: 8, background: '#D4537E', color: '#fff', border: 'none', cursor: chatLoading || !chatInput.trim() ? 'not-allowed' : 'pointer', opacity: chatLoading || !chatInput.trim() ? 0.5 : 1 }}>
-                  Send
-                </button>
+                <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendChatMessage()} placeholder="Ask about your topics, get recommendations..." style={{ flex: 1, fontSize: 13, padding: '11px 14px', borderRadius: 8, border: '0.5px solid #2a2a2a', background: '#111', color: '#fff', outline: 'none' }} />
+                <button onClick={sendChatMessage} disabled={chatLoading || !chatInput.trim()} style={{ fontSize: 13, fontWeight: 500, padding: '11px 18px', borderRadius: 8, background: '#D4537E', color: '#fff', border: 'none', cursor: chatLoading || !chatInput.trim() ? 'not-allowed' : 'pointer', opacity: chatLoading || !chatInput.trim() ? 0.5 : 1 }}>Send</button>
               </div>
             </div>
           )}
 
-          {/* Daily digest */}
           {page === 'digest' && (
             <>
               <div style={{ marginBottom: 28 }}>
@@ -483,7 +454,6 @@ export default function Home() {
             </>
           )}
 
-          {/* Research page */}
           {page === 'research' && topic && (
             <>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28 }}>
@@ -503,13 +473,11 @@ export default function Home() {
                   {loading ? 'Researching...' : topic.report ? 'Refresh' : 'Run research'}
                 </button>
               </div>
-
               {topic.chartData && (
                 <div style={s.card}>
                   <PriceChart data={topic.chartData} dot={topic.dot} />
                 </div>
               )}
-
               <div style={s.card}>
                 {loading ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '40px 0', fontSize: 14, color: '#555' }}>
