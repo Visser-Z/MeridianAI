@@ -5,6 +5,8 @@ const dots = ['#D4537E','#7F77DD','#1D9E75','#D85A30','#BA7517','#378ADD','#6399
 
 export default function Home() {
   const [userLocation, setUserLocation] = useState('South Africa');
+  const [currency, setCurrency] = useState('USD');
+  const [unit, setUnit] = useState('ton');
   const [topics, setTopics] = useState([]);
   const [topicsLoaded, setTopicsLoaded] = useState(false);
   const [activeTopic, setActiveTopic] = useState(null);
@@ -20,7 +22,6 @@ export default function Home() {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [userEmail, setUserEmail] = useState('');
 
-  // Load session info
   useEffect(() => {
     fetch('/api/auth/me')
       .then(r => r.json())
@@ -28,7 +29,6 @@ export default function Home() {
       .catch(() => {});
   }, []);
 
-  // Load topics from Redis
   useEffect(() => {
     if (!userEmail) return;
     fetch('/api/topics?userId=' + encodeURIComponent(userEmail))
@@ -40,7 +40,6 @@ export default function Home() {
       .catch(() => setTopicsLoaded(true));
   }, [userEmail]);
 
-  // Auto-save topics to Redis
   useEffect(() => {
     if (!userEmail || !topicsLoaded) return;
     fetch('/api/topics', {
@@ -50,7 +49,6 @@ export default function Home() {
     }).catch(() => {});
   }, [topics, userEmail, topicsLoaded]);
 
-  // Load saved digest settings
   useEffect(() => {
     if (!userEmail) return;
     fetch('/api/digest-settings?userId=' + encodeURIComponent(userEmail))
@@ -120,7 +118,7 @@ export default function Home() {
         fetch('/api/research', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ topic: topic.name, mode: topic.mode, location: userLocation }),
+          body: JSON.stringify({ topic: topic.name, mode: topic.mode, location: userLocation, currency, unit }),
         }),
         topic.mode === 'intel'
           ? fetch('/api/resolve', {
@@ -193,6 +191,8 @@ export default function Home() {
   const topic = topics.find(t => t.id === activeTopic);
   const userInitials = userEmail ? userEmail[0].toUpperCase() : 'ME';
 
+  const selectStyle = { fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '0.5px solid #2a2a2a', background: '#1a1a1a', color: '#fff', outline: 'none', cursor: 'pointer' };
+
   const s = {
     topbar: { height: 56, background: '#111', borderBottom: '0.5px solid #1e1e1e', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px' },
     layout: { display: 'grid', gridTemplateColumns: '260px 1fr', minHeight: 'calc(100vh - 56px)' },
@@ -215,18 +215,29 @@ export default function Home() {
   return (
     <div style={{ fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', background: '#0a0a0a', minHeight: '100vh', color: '#fff' }}>
 
-      {/* Topbar */}
       <div style={s.topbar}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, fontWeight: 500 }}>
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#D4537E' }} />
           MeridianAI
         </div>
-        <input
-          value={userLocation}
-          onChange={e => setUserLocation(e.target.value)}
-          placeholder="Your location..."
-          style={{ fontSize: 12, padding: '5px 10px', borderRadius: 6, border: '0.5px solid #2a2a2a', background: '#1a1a1a', color: '#fff', outline: 'none', width: 160 }}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input
+            value={userLocation}
+            onChange={e => setUserLocation(e.target.value)}
+            placeholder="Location..."
+            style={{ fontSize: 12, padding: '5px 10px', borderRadius: 6, border: '0.5px solid #2a2a2a', background: '#1a1a1a', color: '#fff', outline: 'none', width: 130 }}
+          />
+          <select value={currency} onChange={e => setCurrency(e.target.value)} style={selectStyle}>
+            {['USD','ZAR','EUR','GBP','CNY','AUD','CAD','JPY','INR','BRL'].map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          <select value={unit} onChange={e => setUnit(e.target.value)} style={selectStyle}>
+            {['ton','kg','g','lb','unit','box','roll','liter','m²','m³'].map(u => (
+              <option key={u} value={u}>per {u}</option>
+            ))}
+          </select>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button onClick={() => setShowEmailModal(true)} style={{ fontSize: 12, fontWeight: 500, padding: '6px 14px', borderRadius: 6, background: '#2a0f1a', color: '#D4537E', border: '0.5px solid #3a1525', cursor: 'pointer' }}>
             Send digest
@@ -247,7 +258,6 @@ export default function Home() {
       </div>
 
       <div style={s.layout}>
-        {/* Sidebar */}
         <div style={s.sidebar}>
           <div style={s.slabel}>Navigation</div>
           {navItem('Dashboard', <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2"/><rect x="8" y="1" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2"/><rect x="1" y="8" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2"/><rect x="8" y="8" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2"/></svg>, page === 'dashboard', goDash)}
@@ -276,7 +286,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Main */}
         <div style={s.main}>
           {page === 'dashboard' && (
             topics.length === 0 ? (
