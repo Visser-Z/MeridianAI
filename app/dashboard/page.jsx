@@ -21,6 +21,10 @@ export default function Home() {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [userEmail, setUserEmail] = useState('');
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = useRef(null);
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -59,6 +63,10 @@ export default function Home() {
       })
       .catch(() => {});
   }, [userEmail]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
 
   async function saveDigestSettings(emailVal, hourVal) {
     if (!userEmail) return;
@@ -108,6 +116,36 @@ export default function Home() {
   function openTopic(id) { setActiveTopic(id); setPage('research'); }
   function goDash() { setPage('dashboard'); setActiveTopic(null); }
   function goDigest() { setPage('digest'); setActiveTopic(null); }
+  function goChat() { setPage('chat'); setActiveTopic(null); }
+
+  async function sendChatMessage() {
+    if (!chatInput.trim() || chatLoading) return;
+    const userMsg = { role: 'user', content: chatInput.trim() };
+    const newMessages = [...chatMessages, userMsg];
+    setChatMessages(newMessages);
+    setChatInput('');
+    setChatLoading(true);
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: newMessages,
+          topics,
+          location: userLocation,
+          currency,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setChatMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
+    } catch (err) {
+      setChatMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, something went wrong. Please try again.' }]);
+    } finally {
+      setChatLoading(false);
+    }
+  }
 
   async function runResearch(topicId) {
     const topic = topics.find(t => t.id === topicId);
@@ -190,7 +228,6 @@ export default function Home() {
 
   const topic = topics.find(t => t.id === activeTopic);
   const userInitials = userEmail ? userEmail[0].toUpperCase() : 'ME';
-
   const selectStyle = { fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '0.5px solid #2a2a2a', background: '#1a1a1a', color: '#fff', outline: 'none', cursor: 'pointer' };
 
   const s = {
@@ -221,32 +258,19 @@ export default function Home() {
           MeridianAI
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <input
-            value={userLocation}
-            onChange={e => setUserLocation(e.target.value)}
-            placeholder="Location..."
-            style={{ fontSize: 12, padding: '5px 10px', borderRadius: 6, border: '0.5px solid #2a2a2a', background: '#1a1a1a', color: '#fff', outline: 'none', width: 130 }}
-          />
+          <input value={userLocation} onChange={e => setUserLocation(e.target.value)} placeholder="Location..." style={{ fontSize: 12, padding: '5px 10px', borderRadius: 6, border: '0.5px solid #2a2a2a', background: '#1a1a1a', color: '#fff', outline: 'none', width: 130 }} />
           <select value={currency} onChange={e => setCurrency(e.target.value)} style={selectStyle}>
-            {['USD','ZAR','EUR','GBP','CNY','AUD','CAD','JPY','INR','BRL'].map(c => (
-              <option key={c} value={c}>{c}</option>
-            ))}
+            {['USD','ZAR','EUR','GBP','CNY','AUD','CAD','JPY','INR','BRL'].map(c => <option key={c} value={c}>{c}</option>)}
           </select>
           <select value={unit} onChange={e => setUnit(e.target.value)} style={selectStyle}>
-            {['ton','kg','g','lb','unit','box','roll','liter','m²','m³'].map(u => (
-              <option key={u} value={u}>per {u}</option>
-            ))}
+            {['ton','kg','g','lb','unit','box','roll','liter','m²','m³'].map(u => <option key={u} value={u}>per {u}</option>)}
           </select>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button onClick={() => setShowEmailModal(true)} style={{ fontSize: 12, fontWeight: 500, padding: '6px 14px', borderRadius: 6, background: '#2a0f1a', color: '#D4537E', border: '0.5px solid #3a1525', cursor: 'pointer' }}>
-            Send digest
-          </button>
+          <button onClick={() => setShowEmailModal(true)} style={{ fontSize: 12, fontWeight: 500, padding: '6px 14px', borderRadius: 6, background: '#2a0f1a', color: '#D4537E', border: '0.5px solid #3a1525', cursor: 'pointer' }}>Send digest</button>
           <div style={{ fontSize: 11, background: '#1a1a1a', color: '#555', border: '0.5px solid #2a2a2a', padding: '3px 10px', borderRadius: 6 }}>Pro plan</div>
           <div style={{ position: 'relative' }}>
-            <div onClick={() => setShowUserMenu(prev => !prev)} style={{ width: 28, height: 28, borderRadius: '50%', background: '#2a0f1a', border: '0.5px solid #D4537E', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#D4537E', cursor: 'pointer', fontWeight: 600 }}>
-              {userInitials}
-            </div>
+            <div onClick={() => setShowUserMenu(prev => !prev)} style={{ width: 28, height: 28, borderRadius: '50%', background: '#2a0f1a', border: '0.5px solid #D4537E', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#D4537E', cursor: 'pointer', fontWeight: 600 }}>{userInitials}</div>
             {showUserMenu && (
               <div style={{ position: 'absolute', right: 0, top: 36, background: '#111', border: '0.5px solid #2a2a2a', borderRadius: 8, padding: 8, minWidth: 180, zIndex: 50 }}>
                 <div style={{ padding: '6px 10px', fontSize: 12, color: '#555', borderBottom: '0.5px solid #1e1e1e', marginBottom: 4 }}>{userEmail}</div>
@@ -261,6 +285,7 @@ export default function Home() {
         <div style={s.sidebar}>
           <div style={s.slabel}>Navigation</div>
           {navItem('Dashboard', <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2"/><rect x="8" y="1" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2"/><rect x="1" y="8" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2"/><rect x="8" y="8" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2"/></svg>, page === 'dashboard', goDash)}
+          {navItem('AI Advisor', <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.2"/><path d="M5 6c0-1.1.9-2 2-2s2 .9 2 2c0 .8-.5 1.5-1.2 1.8L7 8.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><circle cx="7" cy="10.5" r="0.6" fill="currentColor"/></svg>, page === 'chat', goChat)}
           {navItem('Daily digest', <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="12" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.2"/><path d="M4 5h6M4 7.5h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>, page === 'digest', goDigest, topics.length > 0 ? topics.length : null)}
 
           <div style={{ ...s.slabel, marginTop: 20 }}>My topics</div>
@@ -287,6 +312,8 @@ export default function Home() {
         </div>
 
         <div style={s.main}>
+
+          {/* Dashboard */}
           {page === 'dashboard' && (
             topics.length === 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 20px', textAlign: 'center' }}>
@@ -334,6 +361,79 @@ export default function Home() {
             )
           )}
 
+          {/* AI Advisor Chat */}
+          {page === 'chat' && (
+            <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)' }}>
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 20, fontWeight: 500, marginBottom: 3 }}>AI Advisor</div>
+                <div style={{ fontSize: 13, color: '#555' }}>Ask anything about your topics — get recommendations based on your research</div>
+              </div>
+
+              <div style={{ flex: 1, overflowY: 'auto', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {chatMessages.length === 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 20 }}>
+                    <div style={{ fontSize: 13, color: '#444', marginBottom: 8 }}>Try asking:</div>
+                    {[
+                      'What should I buy right now based on my research?',
+                      'Which of my topics has the most risk?',
+                      'Are there any good buying opportunities across my topics?',
+                      'What connections do you see between my topics?',
+                    ].map(suggestion => (
+                      <div key={suggestion} onClick={() => { setChatInput(suggestion); }} style={{ fontSize: 13, color: '#555', background: '#111', border: '0.5px solid #1e1e1e', borderRadius: 8, padding: '10px 14px', cursor: 'pointer' }}
+                        onMouseEnter={e => e.currentTarget.style.borderColor = '#D4537E'}
+                        onMouseLeave={e => e.currentTarget.style.borderColor = '#1e1e1e'}
+                      >
+                        {suggestion}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {chatMessages.map((msg, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                    <div style={{
+                      maxWidth: '75%',
+                      padding: '12px 16px',
+                      borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                      background: msg.role === 'user' ? '#2a0f1a' : '#111',
+                      border: '0.5px solid ' + (msg.role === 'user' ? '#3a1525' : '#1e1e1e'),
+                      fontSize: 14,
+                      color: msg.role === 'user' ? '#D4537E' : '#aaa',
+                      lineHeight: 1.7,
+                      whiteSpace: 'pre-wrap',
+                    }}>
+                      {msg.content}
+                    </div>
+                  </div>
+                ))}
+
+                {chatLoading && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                    <div style={{ padding: '12px 16px', borderRadius: '12px 12px 12px 2px', background: '#111', border: '0.5px solid #1e1e1e', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 14, height: 14, border: '2px solid #1e1e1e', borderTopColor: '#D4537E', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+                      <span style={{ fontSize: 13, color: '#555' }}>Thinking...</span>
+                    </div>
+                  </div>
+                )}
+                <div ref={chatEndRef} />
+              </div>
+
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendChatMessage()}
+                  placeholder="Ask about your topics, get recommendations..."
+                  style={{ flex: 1, fontSize: 13, padding: '11px 14px', borderRadius: 8, border: '0.5px solid #2a2a2a', background: '#111', color: '#fff', outline: 'none' }}
+                />
+                <button onClick={sendChatMessage} disabled={chatLoading || !chatInput.trim()} style={{ fontSize: 13, fontWeight: 500, padding: '11px 18px', borderRadius: 8, background: '#D4537E', color: '#fff', border: 'none', cursor: chatLoading || !chatInput.trim() ? 'not-allowed' : 'pointer', opacity: chatLoading || !chatInput.trim() ? 0.5 : 1 }}>
+                  Send
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Daily digest */}
           {page === 'digest' && (
             <>
               <div style={{ marginBottom: 28 }}>
@@ -369,9 +469,7 @@ export default function Home() {
                     <div style={{ marginBottom: 24 }}>
                       <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>Daily send time</div>
                       <select value={sendHour} onChange={e => setSendHour(Number(e.target.value))} style={{ width: '100%', fontSize: 13, padding: '9px 12px', borderRadius: 7, border: '0.5px solid #2a2a2a', background: '#1a1a1a', color: '#fff', outline: 'none', cursor: 'pointer' }}>
-                        {Array.from({ length: 24 }, (_, i) => (
-                          <option key={i} value={i}>{formatHour(i)}</option>
-                        ))}
+                        {Array.from({ length: 24 }, (_, i) => <option key={i} value={i}>{formatHour(i)}</option>)}
                       </select>
                     </div>
                     <button onClick={async () => { await saveDigestSettings(email, sendHour); setDigestStatus('success'); setTimeout(() => setDigestStatus(null), 3000); }} disabled={!email.trim()} style={{ width: '100%', fontSize: 13, fontWeight: 500, padding: '10px', borderRadius: 7, background: '#D4537E', color: '#fff', border: 'none', cursor: !email.trim() ? 'not-allowed' : 'pointer', opacity: !email.trim() ? 0.5 : 1, marginBottom: 12 }}>
@@ -385,6 +483,7 @@ export default function Home() {
             </>
           )}
 
+          {/* Research page */}
           {page === 'research' && topic && (
             <>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28 }}>
