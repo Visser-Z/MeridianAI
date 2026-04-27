@@ -38,15 +38,20 @@ export default function Home() {
     if (!userEmail) return;
     fetch('/api/topics?userId=' + encodeURIComponent(userEmail))
       .then(r => r.json())
-      .then(data => {
-        if (Array.isArray(data.topics)) setTopics(data.topics);
-        if (data.prefs) {
-          if (data.prefs.currency) setCurrency(data.prefs.currency);
-          if (data.prefs.unit) setUnit(data.prefs.unit);
-          if (data.prefs.location) setUserLocation(data.prefs.location);
-        }
-        setTopicsLoaded(true);
-      })
+.then(data => {
+  // Handle both old format (plain array) and new format ({ topics, prefs })
+  if (Array.isArray(data)) {
+    setTopics(data);
+  } else {
+    if (Array.isArray(data.topics)) setTopics(data.topics);
+    if (data.prefs) {
+      if (data.prefs.currency) setCurrency(data.prefs.currency);
+      if (data.prefs.unit) setUnit(data.prefs.unit);
+      if (data.prefs.location) setUserLocation(data.prefs.location);
+    }
+  }
+  setTopicsLoaded(true);
+})
       .catch(() => setTopicsLoaded(true));
   }, [userEmail]);
 
