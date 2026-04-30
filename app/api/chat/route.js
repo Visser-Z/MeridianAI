@@ -16,12 +16,9 @@ export async function POST(request) {
 TOPIC: ${t.name} (${t.mode === 'supplier' ? 'Supply Chain' : 'Market Intel'})
 SENTIMENT: ${t.sentiment === 'bull' ? 'Bullish' : t.sentiment === 'bear' ? 'Bearish' : 'Neutral'}
 SUMMARY: ${t.report ? t.report.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500) : 'Not researched yet'}
+RESEARCH REPORT: ${t.report ? t.report.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : 'Not yet researched'}
 `).join('\n---\n')
   : 'No researched topics yet.';
-RESEARCH REPORT:
-${t.report ? t.report.replace(/<[^>]*>/g, '') : 'Not yet researched'}
-`).join('\n---\n')
-    : 'No researched topics yet.';
 
   const unresearchedContext = unresearchedTopics.length > 0
     ? `The user is also tracking these topics but hasn't researched them yet: ${unresearchedTopics.map(t => t.name).join(', ')}`
