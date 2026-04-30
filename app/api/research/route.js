@@ -19,7 +19,7 @@ export async function POST(request) {
   try {
     const researchResponse = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 4000,
+      max_tokens: 2500,
       tools: [{ type: "web_search_20250305", name: "web_search" }],
       system: `You are a thorough supply chain and market researcher with access to live web search. 
 Search for current, real-time data. Your job is to gather raw facts only — no formatting, no reports. 
@@ -88,7 +88,7 @@ Focus heavily on news from the past 30 days. Be specific with dates, numbers, an
 
     const reportResponse = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 4000,
+      max_tokens: 2500,
       system: `You are a senior analyst at MeridianAI. Write professional HTML reports based strictly on research notes. Never invent data not in the notes. Return only clean HTML using only allowed tags.`,
       messages: [{
         role: "user",

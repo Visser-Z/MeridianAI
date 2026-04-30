@@ -11,11 +11,13 @@ export async function POST(request) {
   const researchedTopics = topics.filter(t => t.report);
   const unresearchedTopics = topics.filter(t => !t.report);
 
-  const topicContext = researchedTopics.length > 0
-    ? researchedTopics.map(t => `
+ const topicContext = researchedTopics.length > 0
+  ? researchedTopics.map(t => `
 TOPIC: ${t.name} (${t.mode === 'supplier' ? 'Supply Chain' : 'Market Intel'})
 SENTIMENT: ${t.sentiment === 'bull' ? 'Bullish' : t.sentiment === 'bear' ? 'Bearish' : 'Neutral'}
-LAST UPDATED: ${t.updated || 'Unknown'}
+SUMMARY: ${t.report ? t.report.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500) : 'Not researched yet'}
+`).join('\n---\n')
+  : 'No researched topics yet.';
 RESEARCH REPORT:
 ${t.report ? t.report.replace(/<[^>]*>/g, '') : 'Not yet researched'}
 `).join('\n---\n')
